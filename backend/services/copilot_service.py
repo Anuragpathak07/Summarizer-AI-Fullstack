@@ -82,7 +82,7 @@ class CopilotClient:
                 "Content-Type": "application/json"
             }
 
-            logger.debug(f"Request payload: {json.dumps(payload, indent=2)}")
+            logger.debug(f"Request payload: {json.dumps(payload, indent=2)}")#something
             logger.debug(f"Request headers: {json.dumps({k: v if k != 'Authorization' else '***' for k, v in headers.items()}, indent=2)}")
             
             async with aiohttp.ClientSession() as session:
