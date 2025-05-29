@@ -1,33 +1,12 @@
-import os
-import json
 import logging
+import os
+from typing import List, Dict
+import json
 import aiohttp
-from typing import List, Dict, Any
 from dotenv import load_dotenv
+from utils.logger_config import setup_logger
 
-# Create logs directory if it doesn't exist
-if not os.path.exists('logs'):
-    os.makedirs('logs')
-
-# Configure logging
-logging.basicConfig(
-    level=logging.DEBUG,  # Set to DEBUG for more detailed logs
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler('logs/copilot.log'),
-        logging.StreamHandler()
-    ]
-)
-logger = logging.getLogger(__name__)
-
-# Add file handler for detailed logging
-file_handler = logging.FileHandler('logs/copilot.log')
-file_handler.setLevel(logging.DEBUG)
-file_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
-logger.addHandler(file_handler)
-
-logger.info("Initializing CopilotClient logging...")
-logger.info("CopilotClient logs will be saved to logs/copilot.log")
+logger = setup_logger('copilot_service', 'copilot_service.log')
 
 class CopilotClient:
     def __init__(self):
@@ -47,29 +26,54 @@ class CopilotClient:
             logger.info("Starting chat completion request")
             logger.debug(f"Messages received: {json.dumps(messages, indent=2)}")
             
+            # Determine the response format based on the message content
+            message_content = messages[0]["content"].lower()
+            if "flashcard" in message_content:
+                schema = {
+                    "type": "object",
+                    "properties": {
+                        "flashcards": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "question": {"type": "string"},
+                                    "answer": {"type": "string"}
+                                },
+                                "required": ["question", "answer"]
+                            }
+                        }
+                    },
+                    "required": ["flashcards"]
+                }
+            else:
+                schema = {
+                    "type": "object",
+                    "properties": {
+                        "concepts": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "concept": {"type": "string"},
+                                    "definition": {"type": "string"},
+                                    "real_world_application": {"type": "string"},
+                                    "latest_insight": {"type": "string"}
+                                },
+                                "required": ["concept", "definition", "real_world_application", "latest_insight"]
+                            }
+                        }
+                    },
+                    "required": ["concepts"]
+                }
+
             # Prepare the request payload
             payload = {
                 "model": self.model,
-                "message": messages[0]["content"],  # Use the content directly
+                "message": messages[0]["content"],
                 "response_format": {
                     "type": "json_object",
-                    "schema": {
-                        "type": "object",
-                        "properties": {
-                            "flashcards": {
-                                "type": "array",
-                                "items": {
-                                    "type": "object",
-                                    "properties": {
-                                        "question": {"type": "string"},
-                                        "answer": {"type": "string"}
-                                    },
-                                    "required": ["question", "answer"]
-                                }
-                            }
-                        },
-                        "required": ["flashcards"]
-                    }
+                    "schema": schema
                 }
             }
 
@@ -102,17 +106,29 @@ class CopilotClient:
                     try:
                         # Parse the JSON response
                         parsed_content = json.loads(content)
-                        flashcards = parsed_content.get('flashcards', [])
                         
-                        # Log each flashcard's question and answer
-                        logger.info("=== Generated Flashcards ===")
-                        for i, card in enumerate(flashcards):
-                            logger.info(f"\nFlashcard {i+1}:")
-                            logger.info(f"Question: {card.get('question', 'No question')}")
-                            logger.info(f"Answer: {card.get('answer', 'No answer')}")
-                            logger.info("-" * 50)
+                        # Log the content based on type
+                        if "flashcards" in parsed_content:
+                            flashcards = parsed_content.get('flashcards', [])
+                            logger.info("=== Generated Flashcards ===")
+                            for i, card in enumerate(flashcards):
+                                logger.info(f"\nFlashcard {i+1}:")
+                                logger.info(f"Question: {card.get('question', 'No question')}")
+                                logger.info(f"Answer: {card.get('answer', 'No answer')}")
+                                logger.info("-" * 50)
+                            logger.info(f"\nTotal flashcards generated: {len(flashcards)}")
+                        elif "concepts" in parsed_content:
+                            concepts = parsed_content.get('concepts', [])
+                            logger.info("=== Generated Learning Concepts ===")
+                            for i, concept in enumerate(concepts):
+                                logger.info(f"\nConcept {i+1}:")
+                                logger.info(f"Name: {concept.get('concept', 'No concept')}")
+                                logger.info(f"Definition: {concept.get('definition', 'No definition')}")
+                                logger.info(f"Application: {concept.get('real_world_application', 'No application')}")
+                                logger.info(f"Insight: {concept.get('latest_insight', 'No insight')}")
+                                logger.info("-" * 50)
+                            logger.info(f"\nTotal concepts generated: {len(concepts)}")
                         
-                        logger.info(f"\nTotal flashcards generated: {len(flashcards)}")
                         return json.dumps(parsed_content)
                     except json.JSONDecodeError as e:
                         logger.error(f"Failed to parse JSON response: {e}")

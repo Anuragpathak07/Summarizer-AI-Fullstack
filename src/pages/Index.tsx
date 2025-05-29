@@ -13,14 +13,23 @@ interface Flashcard {
   answer: string;
 }
 
+interface LearningContent {
+  concept: string;
+  definition: string;
+  real_world_application: string;
+  latest_insight: string;
+}
+
 const Index = () => {
   const [activeTab, setActiveTab] = useState('upload');
   const [hasUploadedPDF, setHasUploadedPDF] = useState(false);
   const [flashcards, setFlashcards] = useState<Flashcard[]>([]);
+  const [learningContent, setLearningContent] = useState<LearningContent[]>([]);
 
-  const handleUploadComplete = (data: Flashcard[]) => {
-    console.log('PDF Upload Complete:', data);
-    setFlashcards(data);
+  const handleUploadComplete = (flashcards: Flashcard[], learningContent: LearningContent[]) => {
+    console.log('PDF Upload Complete:', { flashcards, learningContent });
+    setFlashcards(flashcards);
+    setLearningContent(learningContent);
     setHasUploadedPDF(true);
     setActiveTab('flashcards');
   };
@@ -60,7 +69,7 @@ const Index = () => {
       case 'flashcards':
         return <FlashcardGrid flashcards={flashcards} />;
       case 'learning':
-        return <LearningTab />;
+        return <LearningTab learningContent={learningContent} />;
       case 'quiz':
         return <QuizInterface />;
       case 'export':
