@@ -13,8 +13,9 @@ class CopilotClient:
         load_dotenv()
         self.api_key = os.getenv('COHERE_API_KEY')
         if not self.api_key:
-            logger.error("COHERE_API_KEY not found in environment variables")
-            raise ValueError("COHERE_API_KEY not found in environment variables")
+            error_msg = "COHERE_API_KEY not found in environment variables. Please set it in the .env file."
+            logger.error(error_msg)
+            raise ValueError(error_msg)
         
         self.endpoint = "https://api.cohere.ai/v1/chat"
         self.model = "command-a-03-2025"
@@ -23,6 +24,9 @@ class CopilotClient:
     async def generate_chat_completion(self, messages: List[Dict[str, str]]) -> str:
         """Generate a chat completion using Cohere's API with structured JSON output."""
         try:
+            if not self.api_key:
+                raise ValueError("API key not configured. Please set COHERE_API_KEY in .env file.")
+
             logger.info("Starting chat completion request")
             logger.debug(f"Messages received: {json.dumps(messages, indent=2)}")
             
@@ -45,6 +49,29 @@ class CopilotClient:
                         }
                     },
                     "required": ["flashcards"]
+                }
+            elif "quiz" in message_content:
+                schema = {
+                    "type": "object",
+                    "properties": {
+                        "quiz": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "question": {"type": "string"},
+                                    "options": {
+                                        "type": "array",
+                                        "items": {"type": "string"}
+                                    },
+                                    "correct_answer": {"type": "string"},
+                                    "explanation": {"type": "string"}
+                                },
+                                "required": ["question", "options", "correct_answer", "explanation"]
+                            }
+                        }
+                    },
+                    "required": ["quiz"]
                 }
             else:
                 schema = {
@@ -82,7 +109,7 @@ class CopilotClient:
                 "Content-Type": "application/json"
             }
 
-            logger.debug(f"Request payload: {json.dumps(payload, indent=2)}")#something
+            logger.debug(f"Request payload: {json.dumps(payload, indent=2)}")
             logger.debug(f"Request headers: {json.dumps({k: v if k != 'Authorization' else '***' for k, v in headers.items()}, indent=2)}")
             
             async with aiohttp.ClientSession() as session:
@@ -93,8 +120,9 @@ class CopilotClient:
                     logger.debug(f"Response body: {response_text}")
 
                     if response.status != 200:
-                        logger.error(f"API request failed with status {response.status}: {response_text}")
-                        raise Exception(f"API request failed: {response_text}")
+                        error_msg = f"API request failed with status {response.status}: {response_text}"
+                        logger.error(error_msg)
+                        raise Exception(error_msg)
 
                     response_data = json.loads(response_text)
                     logger.debug(f"Parsed response: {json.dumps(response_data, indent=2)}")
@@ -117,6 +145,19 @@ class CopilotClient:
                                 logger.info(f"Answer: {card.get('answer', 'No answer')}")
                                 logger.info("-" * 50)
                             logger.info(f"\nTotal flashcards generated: {len(flashcards)}")
+                        elif "quiz" in parsed_content:
+                            quiz_questions = parsed_content.get('quiz', [])
+                            logger.info("=== Generated Quiz Questions ===")
+                            for i, question in enumerate(quiz_questions):
+                                logger.info(f"\nQuestion {i+1}:")
+                                logger.info(f"Question: {question.get('question', 'No question')}")
+                                logger.info("Options:")
+                                for j, option in enumerate(question.get('options', [])):
+                                    logger.info(f"{chr(65+j)}. {option}")
+                                logger.info(f"Correct Answer: {question.get('correct_answer', 'No answer')}")
+                                logger.info(f"Explanation: {question.get('explanation', 'No explanation')}")
+                                logger.info("-" * 50)
+                            logger.info(f"\nTotal quiz questions generated: {len(quiz_questions)}")
                         elif "concepts" in parsed_content:
                             concepts = parsed_content.get('concepts', [])
                             logger.info("=== Generated Learning Concepts ===")
@@ -131,12 +172,14 @@ class CopilotClient:
                         
                         return json.dumps(parsed_content)
                     except json.JSONDecodeError as e:
-                        logger.error(f"Failed to parse JSON response: {e}")
-                        raise Exception(f"Invalid JSON response: {content}")
+                        error_msg = f"Failed to parse JSON response: {e}"
+                        logger.error(error_msg)
+                        raise Exception(error_msg)
 
         except Exception as e:
-            logger.error(f"Error in generate_chat_completion: {str(e)}", exc_info=True)
-            raise
+            error_msg = f"Error in generate_chat_completion: {str(e)}"
+            logger.error(error_msg, exc_info=True)
+            raise Exception(error_msg)
 
 # Create a singleton instance
 copilot_client = CopilotClient() 

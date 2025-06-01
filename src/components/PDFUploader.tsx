@@ -16,8 +16,15 @@ interface LearningContent {
   latest_insight: string;
 }
 
+interface QuizQuestion {
+  question: string;
+  options: string[];
+  correct_answer: string;
+  explanation: string;
+}
+
 interface PDFUploaderProps {
-  onUploadComplete: (flashcards: Flashcard[], learningContent: LearningContent[]) => void;
+  onUploadComplete: (flashcards: Flashcard[], learningContent: LearningContent[], quizQuestions: QuizQuestion[]) => void;
 }
 
 export const PDFUploader: React.FC<PDFUploaderProps> = ({ onUploadComplete }) => {
@@ -80,6 +87,7 @@ export const PDFUploader: React.FC<PDFUploaderProps> = ({ onUploadComplete }) =>
       learningFormData.append('file', file);
 
       let validLearningContent: LearningContent[] = [];
+      let validQuizQuestions: QuizQuestion[] = [];
 
       // Process learning content with increased timeout
       console.log('Sending PDF to backend for learning content generation...');
@@ -100,64 +108,120 @@ export const PDFUploader: React.FC<PDFUploaderProps> = ({ onUploadComplete }) =>
           console.error('Learning content backend error:', errorText);
           // Don't throw, just log and continue
           console.log('Continuing with flashcards only due to learning content error');
-          return;
+        } else {
+          const learningData = await learningResponse.json();
+          console.log('Learning content response:', learningData);
+
+          // Validate learning content
+          if (!learningData.learning_content || !Array.isArray(learningData.learning_content)) {
+            console.error('Invalid learning content response format:', learningData);
+            // Don't throw, just log and continue
+            console.log('Continuing with flashcards only due to invalid learning content format');
+          } else {
+            validLearningContent = learningData.learning_content.filter((content: any) =>
+              content &&
+              typeof content === 'object' &&
+              typeof content.concept === 'string' &&
+              typeof content.definition === 'string' &&
+              typeof content.real_world_application === 'string' &&
+              typeof content.latest_insight === 'string' &&
+              content.concept.trim() !== '' &&
+              content.definition.trim() !== ''
+            );
+
+            // If no valid learning content, show a warning but continue with flashcards
+            if (validLearningContent.length === 0) {
+              toast({
+                title: 'Limited Content',
+                description: 'Could not generate enhanced learning content, but flashcards are available.',
+                variant: 'warning',
+              });
+            }
+          }
         }
 
-        const learningData = await learningResponse.json();
-        console.log('Learning content response:', learningData);
+        // Generate quiz questions
+        console.log('Sending PDF to backend for quiz generation...');
+        const quizFormData = new FormData();
+        quizFormData.append('file', file);
 
-        // Validate learning content
-        if (!learningData.learning_content || !Array.isArray(learningData.learning_content)) {
-          console.error('Invalid learning content response format:', learningData);
-          // Don't throw, just log and continue
-          console.log('Continuing with flashcards only due to invalid learning content format');
-          return;
-        }
-
-        validLearningContent = learningData.learning_content.filter((content: any) =>
-          content &&
-          typeof content === 'object' &&
-          typeof content.concept === 'string' &&
-          typeof content.definition === 'string' &&
-          typeof content.real_world_application === 'string' &&
-          typeof content.latest_insight === 'string' &&
-          content.concept.trim() !== '' &&
-          content.definition.trim() !== ''
-        );
-
-        // If no valid learning content, show a warning but continue with flashcards
-        if (validLearningContent.length === 0) {
-          toast({
-            title: 'Limited Content',
-            description: 'Could not generate enhanced learning content, but flashcards are available.',
-            variant: 'warning',
+        try {
+          const quizResponse = await fetch('http://192.168.31.10:5000/api/quiz/generate', {
+            method: 'POST',
+            body: quizFormData,
+            headers: {
+              'Accept': 'application/json',
+            }
           });
+
+          if (!quizResponse.ok) {
+            const errorText = await quizResponse.text();
+            console.error('Quiz generation backend error:', errorText);
+            // Don't throw, just log and continue
+            console.log('Continuing without quiz questions due to error');
+          } else {
+            const quizData = await quizResponse.json();
+            console.log('Quiz response:', quizData);
+
+            // Validate quiz questions
+            if (!quizData.quiz || !Array.isArray(quizData.quiz)) {
+              console.error('Invalid quiz response format:', quizData);
+              // Don't throw, just log and continue
+              console.log('Continuing without quiz questions due to invalid format');
+            } else {
+              validQuizQuestions = quizData.quiz.filter((question: any) =>
+                question &&
+                typeof question === 'object' &&
+                typeof question.question === 'string' &&
+                Array.isArray(question.options) &&
+                question.options.length === 4 &&
+                typeof question.correct_answer === 'string' &&
+                typeof question.explanation === 'string' &&
+                question.question.trim() !== '' &&
+                question.correct_answer.trim() !== '' &&
+                question.explanation.trim() !== ''
+              );
+
+              if (validQuizQuestions.length === 0) {
+                toast({
+                  title: 'Limited Content',
+                  description: 'Could not generate quiz questions, but flashcards and learning content are available.',
+                  variant: 'warning',
+                });
+              }
+            }
+          }
+        } catch (error) {
+          console.error('Error generating quiz questions:', error);
+          // Don't throw, just log and continue
+          console.log('Continuing without quiz questions due to error');
         }
+
       } catch (error) {
-        // Handle all learning content errors gracefully
+        // Handle all learning content and quiz errors gracefully
         if (error instanceof Error) {
           if (error.name === 'AbortError') {
             toast({
               title: 'Processing Timeout',
-              description: 'The learning content generation is taking longer than expected. You can still use the flashcards while we process the learning content.',
+              description: 'The content generation is taking longer than expected. You can still use the flashcards while we process the rest.',
               variant: 'warning',
             });
           } else {
-            console.error('Error generating learning content:', error);
+            console.error('Error generating content:', error);
             toast({
               title: 'Limited Content',
-              description: 'Could not generate enhanced learning content, but flashcards are available.',
+              description: 'Could not generate all content types, but flashcards are available.',
               variant: 'warning',
             });
           }
         }
       } finally {
         // Always complete with whatever content we have
-        onUploadComplete(validFlashcards, validLearningContent);
+        onUploadComplete(validFlashcards, validLearningContent, validQuizQuestions);
         
         toast({
           title: 'Success',
-          description: `Generated ${validFlashcards.length} flashcards${validLearningContent.length > 0 ? ` and ${validLearningContent.length} learning concepts` : ''}`,
+          description: `Generated ${validFlashcards.length} flashcards${validLearningContent.length > 0 ? `, ${validLearningContent.length} learning concepts` : ''}${validQuizQuestions.length > 0 ? `, and ${validQuizQuestions.length} quiz questions` : ''}`,
         });
       }
     } catch (error) {

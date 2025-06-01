@@ -20,16 +20,25 @@ interface LearningContent {
   latest_insight: string;
 }
 
+interface QuizQuestion {
+  question: string;
+  options: string[];
+  correct_answer: string;
+  explanation: string;
+}
+
 const Index = () => {
   const [activeTab, setActiveTab] = useState('upload');
   const [hasUploadedPDF, setHasUploadedPDF] = useState(false);
   const [flashcards, setFlashcards] = useState<Flashcard[]>([]);
   const [learningContent, setLearningContent] = useState<LearningContent[]>([]);
+  const [quizQuestions, setQuizQuestions] = useState<QuizQuestion[]>([]);
 
-  const handleUploadComplete = (flashcards: Flashcard[], learningContent: LearningContent[]) => {
-    console.log('PDF Upload Complete:', { flashcards, learningContent });
-    setFlashcards(flashcards);
-    setLearningContent(learningContent);
+  const handleUploadComplete = (newFlashcards: Flashcard[], newLearningContent: LearningContent[], newQuizQuestions: QuizQuestion[]) => {
+    console.log('PDF Upload Complete:', { newFlashcards, newLearningContent, newQuizQuestions });
+    setFlashcards(newFlashcards);
+    setLearningContent(newLearningContent);
+    setQuizQuestions(newQuizQuestions);
     setHasUploadedPDF(true);
     setActiveTab('flashcards');
   };
@@ -71,7 +80,12 @@ const Index = () => {
       case 'learning':
         return <LearningTab learningContent={learningContent} />;
       case 'quiz':
-        return <QuizInterface />;
+        return <QuizInterface 
+          questions={quizQuestions}
+          isLoading={false}
+          error={quizQuestions.length === 0 ? 'No quiz questions available. Please upload a PDF first.' : null}
+          onNewQuiz={() => setActiveTab('upload')}
+        />;
       case 'export':
         return <ExportUtilities />;
       default:
@@ -109,11 +123,11 @@ const Index = () => {
         </motion.div>
 
         {/* Background Decorations */}
-        <div className="fixed inset-0 pointer-events-none">
-          <div className="absolute top-20 left-10 w-20 h-20 bg-purple-light rounded-full opacity-50" />
-          <div className="absolute top-40 right-20 w-16 h-16 bg-cyan/20 rounded-full opacity-50" />
-          <div className="absolute bottom-40 left-20 w-24 h-24 bg-soft-yellow/30 rounded-full opacity-50" />
-          <div className="absolute bottom-20 right-10 w-12 h-12 bg-green-light rounded-full opacity-50" />
+        <div className="fixed inset-0 -z-10 overflow-hidden">
+          <div className="absolute top-0 left-0 w-full h-full bg-grid-pattern opacity-5"></div>
+          <div className="absolute top-1/4 left-1/4 w-64 h-64 bg-gradient-to-r from-blue-400 to-purple-400 rounded-full filter blur-3xl opacity-20 animate-blob"></div>
+          <div className="absolute top-1/3 right-1/4 w-72 h-72 bg-gradient-to-r from-purple-400 to-pink-400 rounded-full filter blur-3xl opacity-20 animate-blob animation-delay-2000"></div>
+          <div className="absolute bottom-1/4 left-1/3 w-80 h-80 bg-gradient-to-r from-pink-400 to-blue-400 rounded-full filter blur-3xl opacity-20 animate-blob animation-delay-4000"></div>
         </div>
       </div>
     </ThemeProvider>
