@@ -5,6 +5,7 @@ import { Card } from './ui/card';
 import { useToast } from './ui/use-toast';
 import { Progress } from './ui/progress';
 import { Loader2, FileText, CheckCircle, XCircle } from 'lucide-react';
+import { v4 as uuidv4 } from 'uuid';
 
 interface Flashcard {
   question: string;
@@ -153,6 +154,34 @@ export const PDFUploader: React.FC<PDFUploaderProps> = ({ onUploadComplete }) =>
     return { validFlashcards, validLearningContent, validQuizQuestions };
   };
 
+  const saveToRecents = (filename: string, flashcards: Flashcard[], learningContent: LearningContent[], quizQuestions: QuizQuestion[]) => {
+    console.log('Saving to recents:', { filename, flashcards, learningContent, quizQuestions });
+    
+    const newUpload = {
+      id: uuidv4(),
+      filename,
+      timestamp: Date.now(),
+      flashcards,
+      learningContent,
+      quizQuestions,
+    };
+
+    // Get existing recents
+    const storedRecents = localStorage.getItem('recentUploads');
+    console.log('Existing recents:', storedRecents);
+    
+    const recents = storedRecents ? JSON.parse(storedRecents) : [];
+    console.log('Parsed recents:', recents);
+
+    // Add new upload to the beginning
+    const updatedRecents = [newUpload, ...recents].slice(0, 10); // Keep only last 10 uploads
+    console.log('Updated recents:', updatedRecents);
+
+    // Save to localStorage
+    localStorage.setItem('recentUploads', JSON.stringify(updatedRecents));
+    console.log('Saved to localStorage');
+  };
+
   const onDrop = useCallback(async (acceptedFiles: File[]) => {
     const file = acceptedFiles[0];
     if (!file) return;
@@ -244,6 +273,9 @@ export const PDFUploader: React.FC<PDFUploaderProps> = ({ onUploadComplete }) =>
 
       updateProgress('complete', 100);
       onUploadComplete(validFlashcards, validLearningContent, validQuizQuestions);
+
+      // Save to recents
+      saveToRecents(file.name, validFlashcards, validLearningContent, validQuizQuestions);
 
       toast({
         title: 'Success',

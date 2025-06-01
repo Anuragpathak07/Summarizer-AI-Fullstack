@@ -3,10 +3,12 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { ThemeProvider } from '@/components/ThemeProvider';
 import { Navigation } from '@/components/Navigation';
 import { PDFUploader } from '@/components/PDFUploader';
-import { FlashcardGrid } from '@/components/FlashcardGrid';
-import { LearningTab } from '@/components/LearningTab';
+import { FlashcardInterface } from '@/components/FlashcardInterface';
+import { LearningInterface } from '@/components/LearningInterface';
 import { QuizInterface } from '@/components/QuizInterface';
 import { ExportUtilities } from '@/components/ExportUtilities';
+import { RecentUploads } from '@/components/RecentUploads';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 interface Flashcard {
   question: string;
@@ -33,13 +35,32 @@ const Index = () => {
   const [flashcards, setFlashcards] = useState<Flashcard[]>([]);
   const [learningContent, setLearningContent] = useState<LearningContent[]>([]);
   const [quizQuestions, setQuizQuestions] = useState<QuizQuestion[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const handleUploadComplete = (newFlashcards: Flashcard[], newLearningContent: LearningContent[], newQuizQuestions: QuizQuestion[]) => {
+  const handleUploadComplete = (
+    newFlashcards: Flashcard[],
+    newLearningContent: LearningContent[],
+    newQuizQuestions: QuizQuestion[]
+  ) => {
     console.log('PDF Upload Complete:', { newFlashcards, newLearningContent, newQuizQuestions });
     setFlashcards(newFlashcards);
     setLearningContent(newLearningContent);
     setQuizQuestions(newQuizQuestions);
     setHasUploadedPDF(true);
+    setActiveTab('flashcards');
+    setIsLoading(false);
+    setError(null);
+  };
+
+  const handleRecentSelect = (data: {
+    flashcards: Flashcard[];
+    learningContent: LearningContent[];
+    quizQuestions: QuizQuestion[];
+  }) => {
+    setFlashcards(data.flashcards);
+    setLearningContent(data.learningContent);
+    setQuizQuestions(data.quizQuestions);
     setActiveTab('flashcards');
   };
 
@@ -74,22 +95,40 @@ const Index = () => {
 
     switch (activeTab) {
       case 'upload':
-        return <PDFUploader onUploadComplete={handleUploadComplete} />;
+        return (
+          <div className="space-y-8">
+            <PDFUploader onUploadComplete={handleUploadComplete} />
+            <RecentUploads onSelect={handleRecentSelect} />
+          </div>
+        );
       case 'flashcards':
-        return <FlashcardGrid flashcards={flashcards} />;
+        return (
+          <FlashcardInterface
+            flashcards={flashcards}
+            isLoading={isLoading}
+            error={error}
+          />
+        );
       case 'learning':
-        return <LearningTab learningContent={learningContent} />;
+        return (
+          <LearningInterface
+            learningContent={learningContent}
+            isLoading={isLoading}
+            error={error}
+          />
+        );
       case 'quiz':
-        return <QuizInterface 
-          questions={quizQuestions}
-          isLoading={false}
-          error={quizQuestions.length === 0 ? 'No quiz questions available. Please upload a PDF first.' : null}
-          onNewQuiz={() => setActiveTab('upload')}
-        />;
+        return (
+          <QuizInterface
+            questions={quizQuestions}
+            isLoading={isLoading}
+            error={error}
+          />
+        );
       case 'export':
         return <ExportUtilities />;
       default:
-        return <PDFUploader onUploadComplete={handleUploadComplete} />;
+        return null;
     }
   };
 
