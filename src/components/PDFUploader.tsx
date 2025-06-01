@@ -1,8 +1,10 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useState } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { Button } from './ui/button';
 import { Card } from './ui/card';
 import { useToast } from './ui/use-toast';
+import { Progress } from './ui/progress';
+import { Loader2, FileText, CheckCircle, XCircle } from 'lucide-react';
 
 interface Flashcard {
   question: string;
@@ -27,205 +29,230 @@ interface PDFUploaderProps {
   onUploadComplete: (flashcards: Flashcard[], learningContent: LearningContent[], quizQuestions: QuizQuestion[]) => void;
 }
 
+type ProcessingStatus = 'idle' | 'uploading' | 'processing' | 'generating_flashcards' | 'generating_learning' | 'generating_quiz' | 'complete' | 'error';
+
+const LARGE_FILE_THRESHOLD = 5 * 1024 * 1024; // 5MB in bytes
+
 export const PDFUploader: React.FC<PDFUploaderProps> = ({ onUploadComplete }) => {
   const { toast } = useToast();
+  const [status, setStatus] = useState<ProcessingStatus>('idle');
+  const [progress, setProgress] = useState(0);
+  const [error, setError] = useState<string | null>(null);
+  const [currentChunk, setCurrentChunk] = useState(0);
+  const [totalChunks, setTotalChunks] = useState(0);
+
+  const updateProgress = (newStatus: ProcessingStatus, newProgress: number) => {
+    setStatus(newStatus);
+    setProgress(newProgress);
+  };
+
+  const processChunk = async (
+    formData: FormData,
+    endpoint: string,
+    chunkNumber: number,
+    totalChunks: number,
+    type: 'flashcards' | 'learning' | 'quiz'
+  ) => {
+    const chunkProgress = (chunkNumber / totalChunks) * 100;
+    const baseProgress = type === 'flashcards' ? 0 : type === 'learning' ? 33 : 66;
+    const progressIncrement = 33 / totalChunks;
+
+    updateProgress(
+      type === 'flashcards' ? 'generating_flashcards' :
+      type === 'learning' ? 'generating_learning' : 'generating_quiz',
+      baseProgress + (chunkProgress * progressIncrement)
+    );
+
+    const response = await fetch(`http://192.168.31.10:5000/api/${type === 'flashcards' ? 'flashcards/generate' : type === 'learning' ? 'learning/enhanced' : 'quiz/generate'}`, {
+      method: 'POST',
+      body: formData,
+      headers: {
+        'Accept': 'application/json',
+        'X-Chunk-Number': chunkNumber.toString(),
+        'X-Total-Chunks': totalChunks.toString(),
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to generate ${type} for chunk ${chunkNumber}`);
+    }
+
+    return response.json();
+  };
+
+  const processSmallFile = async (formData: FormData) => {
+    // Generate flashcards
+    updateProgress('generating_flashcards', 33);
+    const flashcardResponse = await fetch('http://192.168.31.10:5000/api/flashcards/generate', {
+      method: 'POST',
+      body: formData,
+    });
+
+    if (!flashcardResponse.ok) {
+      throw new Error('Failed to generate flashcards');
+    }
+
+    const flashcardData = await flashcardResponse.json();
+    const validFlashcards = flashcardData.flashcards.filter((card: any) =>
+      card && typeof card === 'object' &&
+      typeof card.question === 'string' &&
+      typeof card.answer === 'string' &&
+      card.question.trim() !== '' &&
+      card.answer.trim() !== ''
+    );
+
+    // Generate learning content
+    updateProgress('generating_learning', 66);
+    const learningResponse = await fetch('http://192.168.31.10:5000/api/learning/enhanced', {
+      method: 'POST',
+      body: formData,
+    });
+
+    let validLearningContent: LearningContent[] = [];
+    if (learningResponse.ok) {
+      const learningData = await learningResponse.json();
+      validLearningContent = learningData.learning_content.filter((content: any) =>
+        content &&
+        typeof content === 'object' &&
+        typeof content.concept === 'string' &&
+        typeof content.definition === 'string' &&
+        typeof content.real_world_application === 'string' &&
+        typeof content.latest_insight === 'string' &&
+        content.concept.trim() !== '' &&
+        content.definition.trim() !== ''
+      );
+    }
+
+    // Generate quiz questions
+    updateProgress('generating_quiz', 90);
+    const quizResponse = await fetch('http://192.168.31.10:5000/api/quiz/generate', {
+      method: 'POST',
+      body: formData,
+      headers: {
+        'Accept': 'application/json',
+      }
+    });
+
+    let validQuizQuestions: QuizQuestion[] = [];
+    if (quizResponse.ok) {
+      const quizData = await quizResponse.json();
+      validQuizQuestions = quizData.quiz.filter((question: any) =>
+        question &&
+        typeof question === 'object' &&
+        typeof question.question === 'string' &&
+        Array.isArray(question.options) &&
+        question.options.length === 4 &&
+        typeof question.correct_answer === 'string' &&
+        typeof question.explanation === 'string' &&
+        question.question.trim() !== '' &&
+        question.correct_answer.trim() !== '' &&
+        question.explanation.trim() !== ''
+      );
+    }
+
+    return { validFlashcards, validLearningContent, validQuizQuestions };
+  };
 
   const onDrop = useCallback(async (acceptedFiles: File[]) => {
     const file = acceptedFiles[0];
     if (!file) return;
 
-    if (file.type !== 'application/pdf') {
-      toast({
-        title: 'Invalid file type',
-        description: 'Please upload a PDF file',
-        variant: 'destructive',
-      });
-      return;
-    }
+    setError(null);
+    updateProgress('uploading', 10);
+    setCurrentChunk(0);
 
     try {
       const formData = new FormData();
       formData.append('file', file);
 
-      // Process flashcards first
-      console.log('Sending PDF to backend for flashcard generation...');
-      const flashcardsResponse = await fetch('http://192.168.31.10:5000/api/flashcards/generate', {
-        method: 'POST',
-        body: formData,
-      });
-
-      if (!flashcardsResponse.ok) {
-        const errorText = await flashcardsResponse.text();
-        console.error('Flashcards backend error:', errorText);
-        throw new Error(`Failed to generate flashcards: ${errorText}`);
-      }
-
-      const flashcardsData = await flashcardsResponse.json();
-      console.log('Flashcards response:', flashcardsData);
-
-      // Validate flashcards
-      if (!flashcardsData.flashcards || !Array.isArray(flashcardsData.flashcards)) {
-        console.error('Invalid flashcards response format:', flashcardsData);
-        throw new Error('Invalid flashcards response format from backend');
-      }
-
-      const validFlashcards = flashcardsData.flashcards.filter((card: any) => 
-        card && 
-        typeof card === 'object' && 
-        typeof card.question === 'string' && 
-        typeof card.answer === 'string' &&
-        card.question.trim() !== '' &&
-        card.answer.trim() !== ''
-      );
-
-      if (validFlashcards.length === 0) {
-        throw new Error('No valid flashcards could be generated from the PDF');
-      }
-
-      // Create a new FormData for the learning content request
-      const learningFormData = new FormData();
-      learningFormData.append('file', file);
-
+      let validFlashcards: Flashcard[] = [];
       let validLearningContent: LearningContent[] = [];
       let validQuizQuestions: QuizQuestion[] = [];
 
-      // Process learning content with increased timeout
-      console.log('Sending PDF to backend for learning content generation...');
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 120000); // 2 minutes timeout
-
-      try {
-        const learningResponse = await fetch('http://192.168.31.10:5000/api/learning/enhanced', {
+      // Check if file is large enough to require chunking
+      if (file.size > LARGE_FILE_THRESHOLD) {
+        // Get metadata for chunking
+        const metadataResponse = await fetch('http://192.168.31.10:5000/api/metadata', {
           method: 'POST',
-          body: learningFormData,
-          signal: controller.signal,
+          body: formData,
         });
 
-        clearTimeout(timeoutId);
-
-        if (!learningResponse.ok) {
-          const errorText = await learningResponse.text();
-          console.error('Learning content backend error:', errorText);
-          // Don't throw, just log and continue
-          console.log('Continuing with flashcards only due to learning content error');
-        } else {
-          const learningData = await learningResponse.json();
-          console.log('Learning content response:', learningData);
-
-          // Validate learning content
-          if (!learningData.learning_content || !Array.isArray(learningData.learning_content)) {
-            console.error('Invalid learning content response format:', learningData);
-            // Don't throw, just log and continue
-            console.log('Continuing with flashcards only due to invalid learning content format');
-          } else {
-            validLearningContent = learningData.learning_content.filter((content: any) =>
-              content &&
-              typeof content === 'object' &&
-              typeof content.concept === 'string' &&
-              typeof content.definition === 'string' &&
-              typeof content.real_world_application === 'string' &&
-              typeof content.latest_insight === 'string' &&
-              content.concept.trim() !== '' &&
-              content.definition.trim() !== ''
-            );
-
-            // If no valid learning content, show a warning but continue with flashcards
-            if (validLearningContent.length === 0) {
-              toast({
-                title: 'Limited Content',
-                description: 'Could not generate enhanced learning content, but flashcards are available.',
-                variant: 'warning',
-              });
-            }
-          }
+        if (!metadataResponse.ok) {
+          throw new Error('Failed to get PDF metadata');
         }
 
-        // Generate quiz questions
-        console.log('Sending PDF to backend for quiz generation...');
-        const quizFormData = new FormData();
-        quizFormData.append('file', file);
+        const metadata = await metadataResponse.json();
+        const totalChunks = Math.ceil(metadata.total_pages / 5); // Assuming 5 pages per chunk
+        setTotalChunks(totalChunks);
 
-        try {
-          const quizResponse = await fetch('http://192.168.31.10:5000/api/quiz/generate', {
-            method: 'POST',
-            body: quizFormData,
-            headers: {
-              'Accept': 'application/json',
-            }
-          });
-
-          if (!quizResponse.ok) {
-            const errorText = await quizResponse.text();
-            console.error('Quiz generation backend error:', errorText);
-            // Don't throw, just log and continue
-            console.log('Continuing without quiz questions due to error');
-          } else {
-            const quizData = await quizResponse.json();
-            console.log('Quiz response:', quizData);
-
-            // Validate quiz questions
-            if (!quizData.quiz || !Array.isArray(quizData.quiz)) {
-              console.error('Invalid quiz response format:', quizData);
-              // Don't throw, just log and continue
-              console.log('Continuing without quiz questions due to invalid format');
-            } else {
-              validQuizQuestions = quizData.quiz.filter((question: any) =>
-                question &&
-                typeof question === 'object' &&
-                typeof question.question === 'string' &&
-                Array.isArray(question.options) &&
-                question.options.length === 4 &&
-                typeof question.correct_answer === 'string' &&
-                typeof question.explanation === 'string' &&
-                question.question.trim() !== '' &&
-                question.correct_answer.trim() !== '' &&
-                question.explanation.trim() !== ''
-              );
-
-              if (validQuizQuestions.length === 0) {
-                toast({
-                  title: 'Limited Content',
-                  description: 'Could not generate quiz questions, but flashcards and learning content are available.',
-                  variant: 'warning',
-                });
-              }
-            }
-          }
-        } catch (error) {
-          console.error('Error generating quiz questions:', error);
-          // Don't throw, just log and continue
-          console.log('Continuing without quiz questions due to error');
+        // Process flashcards in chunks
+        for (let i = 0; i < totalChunks; i++) {
+          setCurrentChunk(i + 1);
+          const flashcardData = await processChunk(formData, 'flashcards/generate', i + 1, totalChunks, 'flashcards');
+          const chunkFlashcards = flashcardData.flashcards.filter((card: any) =>
+            card && typeof card === 'object' &&
+            typeof card.question === 'string' &&
+            typeof card.answer === 'string' &&
+            card.question.trim() !== '' &&
+            card.answer.trim() !== ''
+          );
+          validFlashcards = [...validFlashcards, ...chunkFlashcards];
         }
 
-      } catch (error) {
-        // Handle all learning content and quiz errors gracefully
-        if (error instanceof Error) {
-          if (error.name === 'AbortError') {
-            toast({
-              title: 'Processing Timeout',
-              description: 'The content generation is taking longer than expected. You can still use the flashcards while we process the rest.',
-              variant: 'warning',
-            });
-          } else {
-            console.error('Error generating content:', error);
-            toast({
-              title: 'Limited Content',
-              description: 'Could not generate all content types, but flashcards are available.',
-              variant: 'warning',
-            });
-          }
+        // Process learning content in chunks
+        for (let i = 0; i < totalChunks; i++) {
+          setCurrentChunk(i + 1);
+          const learningData = await processChunk(formData, 'learning/enhanced', i + 1, totalChunks, 'learning');
+          const chunkLearningContent = learningData.learning_content.filter((content: any) =>
+            content &&
+            typeof content === 'object' &&
+            typeof content.concept === 'string' &&
+            typeof content.definition === 'string' &&
+            typeof content.real_world_application === 'string' &&
+            typeof content.latest_insight === 'string' &&
+            content.concept.trim() !== '' &&
+            content.definition.trim() !== ''
+          );
+          validLearningContent = [...validLearningContent, ...chunkLearningContent];
         }
-      } finally {
-        // Always complete with whatever content we have
-        onUploadComplete(validFlashcards, validLearningContent, validQuizQuestions);
-        
-        toast({
-          title: 'Success',
-          description: `Generated ${validFlashcards.length} flashcards${validLearningContent.length > 0 ? `, ${validLearningContent.length} learning concepts` : ''}${validQuizQuestions.length > 0 ? `, and ${validQuizQuestions.length} quiz questions` : ''}`,
-        });
+
+        // Process quiz questions in chunks
+        for (let i = 0; i < totalChunks; i++) {
+          setCurrentChunk(i + 1);
+          const quizData = await processChunk(formData, 'quiz/generate', i + 1, totalChunks, 'quiz');
+          const chunkQuizQuestions = quizData.quiz.filter((question: any) =>
+            question &&
+            typeof question === 'object' &&
+            typeof question.question === 'string' &&
+            Array.isArray(question.options) &&
+            question.options.length === 4 &&
+            typeof question.correct_answer === 'string' &&
+            typeof question.explanation === 'string' &&
+            question.question.trim() !== '' &&
+            question.correct_answer.trim() !== '' &&
+            question.explanation.trim() !== ''
+          );
+          validQuizQuestions = [...validQuizQuestions, ...chunkQuizQuestions];
+        }
+      } else {
+        // Process small file directly
+        const result = await processSmallFile(formData);
+        validFlashcards = result.validFlashcards;
+        validLearningContent = result.validLearningContent;
+        validQuizQuestions = result.validQuizQuestions;
       }
+
+      updateProgress('complete', 100);
+      onUploadComplete(validFlashcards, validLearningContent, validQuizQuestions);
+
+      toast({
+        title: 'Success',
+        description: `Generated ${validFlashcards.length} flashcards${validLearningContent.length > 0 ? `, ${validLearningContent.length} learning concepts` : ''}${validQuizQuestions.length > 0 ? `, and ${validQuizQuestions.length} quiz questions` : ''}`,
+      });
     } catch (error) {
       console.error('Error processing PDF:', error);
+      setError(error instanceof Error ? error.message : 'Failed to process PDF');
+      updateProgress('error', 0);
       toast({
         title: 'Error',
         description: error instanceof Error ? error.message : 'Failed to process PDF. Please try again.',
@@ -242,26 +269,93 @@ export const PDFUploader: React.FC<PDFUploaderProps> = ({ onUploadComplete }) =>
     maxFiles: 1,
   });
 
+  const getStatusMessage = () => {
+    if (status === 'generating_flashcards' || status === 'generating_learning' || status === 'generating_quiz') {
+      if (totalChunks > 0) {
+        return `${getStatusMessageForType(status)} (Chunk ${currentChunk} of ${totalChunks})`;
+      }
+      return getStatusMessageForType(status);
+    }
+    
+    switch (status) {
+      case 'uploading':
+        return 'Uploading PDF...';
+      case 'processing':
+        return 'Processing PDF...';
+      case 'complete':
+        return 'Processing complete!';
+      case 'error':
+        return 'Error processing PDF';
+      default:
+        return 'Drop your PDF here or click to browse';
+    }
+  };
+
+  const getStatusMessageForType = (status: ProcessingStatus) => {
+    switch (status) {
+      case 'generating_flashcards':
+        return 'Generating flashcards...';
+      case 'generating_learning':
+        return 'Generating learning content...';
+      case 'generating_quiz':
+        return 'Generating quiz questions...';
+      default:
+        return '';
+    }
+  };
+
+  const getStatusIcon = () => {
+    switch (status) {
+      case 'uploading':
+      case 'processing':
+      case 'generating_flashcards':
+      case 'generating_learning':
+      case 'generating_quiz':
+        return <Loader2 className="w-8 h-8 animate-spin text-indigo" />;
+      case 'complete':
+        return <CheckCircle className="w-8 h-8 text-green-500" />;
+      case 'error':
+        return <XCircle className="w-8 h-8 text-red-500" />;
+      default:
+        return <FileText className="w-8 h-8 text-gray-400" />;
+    }
+  };
+
   return (
-    <Card className="p-6">
-      <div
-        {...getRootProps()}
-        className={`border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors
-          ${isDragActive ? 'border-primary bg-primary/10' : 'border-gray-300 hover:border-primary'}`}
-      >
-        <input {...getInputProps()} />
-        <div className="space-y-4">
-          <div className="text-4xl">📄</div>
-          {isDragActive ? (
-            <p className="text-lg">Drop the PDF here...</p>
-          ) : (
-            <div className="space-y-2">
-              <p className="text-lg">Drag and drop your PDF here, or click to select</p>
-              <Button variant="outline">Select PDF</Button>
-            </div>
-          )}
+    <div className="max-w-2xl mx-auto">
+      <Card className="p-8">
+        <div
+          {...getRootProps()}
+          className={`
+            border-2 border-dashed rounded-lg p-8 text-center cursor-pointer
+            transition-colors duration-200
+            ${isDragActive ? 'border-indigo bg-indigo/5' : 'border-gray-300 dark:border-gray-700'}
+            ${status === 'error' ? 'border-red-500 bg-red-50 dark:bg-red-900/20' : ''}
+          `}
+        >
+          <input {...getInputProps()} />
+          <div className="space-y-4">
+            {getStatusIcon()}
+            <p className="text-lg font-medium text-gray-900 dark:text-gray-100">
+              {getStatusMessage()}
+            </p>
+            {error && (
+              <p className="text-sm text-red-500">{error}</p>
+            )}
+            {status !== 'idle' && status !== 'error' && (
+              <div className="w-full max-w-md mx-auto">
+                <Progress value={progress} className="h-2" />
+                <p className="text-sm text-gray-500 mt-2">{progress}% complete</p>
+              </div>
+            )}
+            {status === 'idle' && (
+              <p className="text-sm text-gray-500">
+                Drag and drop your PDF here, or click to select a file
+              </p>
+            )}
+          </div>
         </div>
-      </div>
-    </Card>
+      </Card>
+    </div>
   );
 };
