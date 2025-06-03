@@ -155,31 +155,87 @@ export const PDFUploader: React.FC<PDFUploaderProps> = ({ onUploadComplete }) =>
   };
 
   const saveToRecents = (filename: string, flashcards: Flashcard[], learningContent: LearningContent[], quizQuestions: QuizQuestion[]) => {
-    console.log('Saving to recents:', { filename, flashcards, learningContent, quizQuestions });
-    
-    const newUpload = {
-      id: uuidv4(),
-      filename,
-      timestamp: Date.now(),
-      flashcards,
-      learningContent,
-      quizQuestions,
-    };
+    try {
+      console.log('Saving to recents:', { filename, flashcards, learningContent, quizQuestions });
+      
+      // Validate data before saving
+      if (!filename || !Array.isArray(flashcards) || !Array.isArray(learningContent) || !Array.isArray(quizQuestions)) {
+        console.error('Invalid data provided to saveToRecents');
+        return;
+      }
 
-    // Get existing recents
-    const storedRecents = localStorage.getItem('recentUploads');
-    console.log('Existing recents:', storedRecents);
-    
-    const recents = storedRecents ? JSON.parse(storedRecents) : [];
-    console.log('Parsed recents:', recents);
+      const newUpload = {
+        id: uuidv4(),
+        filename,
+        timestamp: Date.now(),
+        flashcards: flashcards.filter(card => 
+          card && 
+          typeof card.question === 'string' && 
+          typeof card.answer === 'string' &&
+          card.question.trim() !== '' &&
+          card.answer.trim() !== ''
+        ),
+        learningContent: learningContent.filter(content =>
+          content &&
+          typeof content.concept === 'string' &&
+          typeof content.definition === 'string' &&
+          typeof content.real_world_application === 'string' &&
+          typeof content.latest_insight === 'string' &&
+          content.concept.trim() !== '' &&
+          content.definition.trim() !== ''
+        ),
+        quizQuestions: quizQuestions.filter(question =>
+          question &&
+          typeof question.question === 'string' &&
+          Array.isArray(question.options) &&
+          question.options.length === 4 &&
+          typeof question.correct_answer === 'string' &&
+          typeof question.explanation === 'string' &&
+          question.question.trim() !== '' &&
+          question.correct_answer.trim() !== '' &&
+          question.explanation.trim() !== ''
+        ),
+      };
 
-    // Add new upload to the beginning
-    const updatedRecents = [newUpload, ...recents].slice(0, 10); // Keep only last 10 uploads
-    console.log('Updated recents:', updatedRecents);
+      // Get existing recents
+      const storedRecents = localStorage.getItem('recentUploads');
+      console.log('Existing recents:', storedRecents);
+      
+      let recents: any[] = [];
+      if (storedRecents) {
+        try {
+          recents = JSON.parse(storedRecents);
+          if (!Array.isArray(recents)) {
+            console.error('Stored recents is not an array, resetting...');
+            recents = [];
+          }
+        } catch (error) {
+          console.error('Error parsing stored recents:', error);
+          recents = [];
+        }
+      }
 
-    // Save to localStorage
-    localStorage.setItem('recentUploads', JSON.stringify(updatedRecents));
-    console.log('Saved to localStorage');
+      // Add new upload to the beginning
+      const updatedRecents = [newUpload, ...recents].slice(0, 10); // Keep only last 10 uploads
+      console.log('Updated recents:', updatedRecents);
+
+      // Save to localStorage
+      localStorage.setItem('recentUploads', JSON.stringify(updatedRecents));
+      console.log('Saved to localStorage');
+
+      // Dispatch storage event to notify other tabs
+      window.dispatchEvent(new StorageEvent('storage', {
+        key: 'recentUploads',
+        newValue: JSON.stringify(updatedRecents),
+        storageArea: localStorage
+      }));
+
+      // Verify the save
+      const verifyData = localStorage.getItem('recentUploads');
+      console.log('Verification - Stored data:', verifyData);
+    } catch (error) {
+      console.error('Error saving to recents:', error);
+    }
   };
 
   const onDrop = useCallback(async (acceptedFiles: File[]) => {

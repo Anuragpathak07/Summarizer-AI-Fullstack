@@ -65,21 +65,42 @@ export const FlashcardInterface: React.FC<FlashcardInterfaceProps> = ({
   return (
     <div className="max-w-2xl mx-auto">
       <div className="relative">
-        <Card
-          className={`p-8 min-h-[300px] flex items-center justify-center cursor-pointer transition-transform duration-500 transform-gpu ${
-            isFlipped ? 'rotate-y-180' : ''
-          }`}
-          onClick={handleFlip}
-        >
-          <div className={`text-center ${isFlipped ? 'hidden' : 'block'}`}>
-            <h3 className="text-xl font-semibold mb-4">Question</h3>
-            <p className="text-lg">{currentCard.question}</p>
-          </div>
-          <div className={`text-center ${isFlipped ? 'block' : 'hidden'}`}>
-            <h3 className="text-xl font-semibold mb-4">Answer</h3>
-            <p className="text-lg">{currentCard.answer}</p>
-          </div>
-        </Card>
+        <div className="perspective-1000">
+          <Card
+            className={`
+              p-8 min-h-[300px] flex items-center justify-center cursor-pointer
+              transition-transform duration-500 transform-gpu
+              ${isFlipped ? 'rotate-y-180' : ''}
+              preserve-3d
+            `}
+            onClick={handleFlip}
+          >
+            <div
+              className={`
+                absolute inset-0 p-8 flex items-center justify-center
+                backface-hidden
+                ${isFlipped ? 'hidden' : 'block'}
+              `}
+            >
+              <div className="text-center">
+                <h3 className="text-xl font-semibold mb-4">Question</h3>
+                <p className="text-lg">{currentCard.question}</p>
+              </div>
+            </div>
+            <div
+              className={`
+                absolute inset-0 p-8 flex items-center justify-center
+                backface-hidden rotate-y-180
+                ${isFlipped ? 'block' : 'hidden'}
+              `}
+            >
+              <div className="text-center">
+                <h3 className="text-xl font-semibold mb-4">Answer</h3>
+                <p className="text-lg">{currentCard.answer}</p>
+              </div>
+            </div>
+          </Card>
+        </div>
 
         <div className="flex justify-between mt-6">
           <Button

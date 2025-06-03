@@ -32,28 +32,99 @@ interface RecentUploadsProps {
 
 export const RecentUploads: React.FC<RecentUploadsProps> = ({ onSelect }) => {
   const [recentUploads, setRecentUploads] = useState<RecentUpload[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-  useEffect(() => {
-    // Load recent uploads from localStorage
-    const storedUploads = localStorage.getItem('recentUploads');
-    console.log('Stored uploads:', storedUploads);
-    if (storedUploads) {
+  const loadRecentUploads = () => {
+    try {
+      setIsLoading(true);
+      const storedUploads = localStorage.getItem('recentUploads');
+      console.log('Raw stored uploads:', storedUploads);
+      
+      if (!storedUploads) {
+        console.log('No stored uploads found');
+        setRecentUploads([]);
+        return;
+      }
+
       try {
         const parsedUploads = JSON.parse(storedUploads);
         console.log('Parsed uploads:', parsedUploads);
-        setRecentUploads(parsedUploads);
-      } catch (error) {
-        console.error('Error parsing stored uploads:', error);
+        
+        if (!Array.isArray(parsedUploads)) {
+          console.error('Stored uploads is not an array:', parsedUploads);
+          setRecentUploads([]);
+          return;
+        }
+
+        // Validate each upload
+        const validUploads = parsedUploads.filter((upload): upload is RecentUpload => {
+          const isValid = upload &&
+            typeof upload === 'object' &&
+            typeof upload.id === 'string' &&
+            typeof upload.filename === 'string' &&
+            typeof upload.timestamp === 'number' &&
+            Array.isArray(upload.flashcards) &&
+            Array.isArray(upload.learningContent) &&
+            Array.isArray(upload.quizQuestions);
+
+          if (!isValid) {
+            console.error('Invalid upload found:', upload);
+          }
+          return isValid;
+        });
+
+        console.log('Valid uploads:', validUploads);
+        setRecentUploads(validUploads);
+      } catch (parseError) {
+        console.error('Error parsing stored uploads:', parseError);
+        setRecentUploads([]);
       }
+    } catch (error) {
+      console.error('Error loading recent uploads:', error);
+      setRecentUploads([]);
+    } finally {
+      setIsLoading(false);
     }
+  };
+
+  useEffect(() => {
+    loadRecentUploads();
+
+    // Add event listener for storage changes
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'recentUploads') {
+        console.log('Storage event detected:', e);
+        loadRecentUploads();
+      }
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
   }, []);
 
-  // Add a debug log for the current state
   console.log('Current recentUploads state:', recentUploads);
 
-  if (recentUploads.length === 0) {
-    console.log('No recent uploads found');
-    return null;
+  if (isLoading) {
+    return (
+      <div className="mt-8">
+        <h2 className="text-xl font-semibold mb-4 text-gray-900 dark:text-gray-100">
+          Recent Uploads
+        </h2>
+        <div className="text-gray-500 dark:text-gray-400">Loading recent uploads...</div>
+      </div>
+    );
+  }
+
+  if (!recentUploads || recentUploads.length === 0) {
+    console.log('No recent uploads to display');
+    return (
+      <div className="mt-8">
+        <h2 className="text-xl font-semibold mb-4 text-gray-900 dark:text-gray-100">
+          Recent Uploads
+        </h2>
+        <div className="text-gray-500 dark:text-gray-400">No recent uploads found</div>
+      </div>
+    );
   }
 
   return (
@@ -66,11 +137,14 @@ export const RecentUploads: React.FC<RecentUploadsProps> = ({ onSelect }) => {
           <Card
             key={upload.id}
             className="p-4 hover:shadow-lg transition-shadow cursor-pointer"
-            onClick={() => onSelect({
-              flashcards: upload.flashcards,
-              learningContent: upload.learningContent,
-              quizQuestions: upload.quizQuestions,
-            })}
+            onClick={() => {
+              console.log('Selected upload:', upload);
+              onSelect({
+                flashcards: upload.flashcards,
+                learningContent: upload.learningContent,
+                quizQuestions: upload.quizQuestions,
+              });
+            }}
           >
             <div className="flex items-start space-x-3">
               <div className="p-2 bg-indigo-100 dark:bg-indigo-900 rounded-lg">

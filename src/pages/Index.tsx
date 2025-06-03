@@ -9,6 +9,7 @@ import { QuizInterface } from '@/components/QuizInterface';
 import { ExportUtilities } from '@/components/ExportUtilities';
 import { RecentUploads } from '@/components/RecentUploads';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { toast } from '@/components/ui/use-toast';
 
 interface Flashcard {
   question: string;
@@ -58,10 +59,36 @@ const Index = () => {
     learningContent: LearningContent[];
     quizQuestions: QuizQuestion[];
   }) => {
+    console.log('Handling recent select with data:', data);
+    
+    // Validate the data
+    if (!data || !Array.isArray(data.flashcards) || !Array.isArray(data.learningContent) || !Array.isArray(data.quizQuestions)) {
+      console.error('Invalid data received in handleRecentSelect');
+      return;
+    }
+
+    // Set the data
     setFlashcards(data.flashcards);
     setLearningContent(data.learningContent);
     setQuizQuestions(data.quizQuestions);
-    setActiveTab('flashcards');
+    setHasUploadedPDF(true);
+    setIsLoading(false);
+    setError(null);
+
+    // Switch to the appropriate tab based on content
+    if (data.flashcards.length > 0) {
+      setActiveTab('flashcards');
+    } else if (data.learningContent.length > 0) {
+      setActiveTab('learning');
+    } else if (data.quizQuestions.length > 0) {
+      setActiveTab('quiz');
+    }
+
+    // Show success toast
+    toast({
+      title: 'Content Loaded',
+      description: `Loaded ${data.flashcards.length} flashcards, ${data.learningContent.length} learning concepts, and ${data.quizQuestions.length} quiz questions.`,
+    });
   };
 
   const renderTabContent = () => {
@@ -126,7 +153,20 @@ const Index = () => {
           />
         );
       case 'export':
-        return <ExportUtilities />;
+        console.log('Rendering export tab with:', {
+          flashcards: flashcards.length,
+          learningContent: learningContent.length,
+          quizQuestions: quizQuestions.length
+        });
+        return (
+          <div className="w-full">
+            <ExportUtilities
+              flashcards={flashcards}
+              learningContent={learningContent}
+              quizQuestions={quizQuestions}
+            />
+          </div>
+        );
       default:
         return null;
     }
