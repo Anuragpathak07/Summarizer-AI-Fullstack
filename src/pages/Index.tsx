@@ -10,6 +10,7 @@ import { ExportUtilities } from '@/components/ExportUtilities';
 import { RecentUploads } from '@/components/RecentUploads';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from '@/components/ui/use-toast';
+import { Chatbot } from "@/components/Chatbot";
 
 interface Flashcard {
   question: string;
@@ -38,6 +39,7 @@ const Index = () => {
   const [quizQuestions, setQuizQuestions] = useState<QuizQuestion[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isChatOpen, setIsChatOpen] = useState(false);
 
   const handleUploadComplete = (
     newFlashcards: Flashcard[],
@@ -191,15 +193,19 @@ const Index = () => {
           </AnimatePresence>
         </main>
 
-        {/* AI Assistant (Placeholder) */}
+        {/* AI Assistant (Button) */}
         <motion.div
           initial={{ opacity: 0, scale: 0 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ duration: 0.5, delay: 1 }}
           className="fixed bottom-6 right-6 w-14 h-14 bg-gradient-primary rounded-full flex items-center justify-center shadow-lg cursor-pointer hover:scale-110 transition-transform z-50"
+          onClick={() => setIsChatOpen(true)}
         >
           <span className="text-white text-xl">🤖</span>
         </motion.div>
+
+        {/* Chatbot Window */}
+        <Chatbot isOpen={isChatOpen} onClose={() => setIsChatOpen(false)} />
 
         {/* Background Decorations */}
         <div className="fixed inset-0 -z-10 overflow-hidden">

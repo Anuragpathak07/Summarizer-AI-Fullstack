@@ -13,6 +13,7 @@ from services.copilot_service import copilot_client
 from werkzeug.utils import secure_filename
 from utils.logger_config import setup_logger
 import PyPDF2
+import requests
 
 # Set up main application logger
 logger = setup_logger('app', 'app.log')
@@ -410,6 +411,49 @@ Format the response as a JSON object with a 'quiz' array containing objects with
 
     except Exception as e:
         logger.error(f"Error in quiz generation: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/chat', methods=['POST'])
+async def chat():
+    """Endpoint for general chat using Cohere API."""
+    try:
+        data = request.get_json()
+        if not data or 'messages' not in data:
+            return jsonify({'error': 'Invalid payload'}), 400
+
+        messages = data['messages']
+        if not isinstance(messages, list) or len(messages) == 0:
+            return jsonify({'error': 'Messages must be a non-empty list'}), 400
+
+        user_message = messages[-1].get('content', '')
+        if not user_message:
+            return jsonify({'error': 'Empty message content'}), 400
+
+        api_key = os.getenv('COHERE_API_KEY')
+        if not api_key:
+            logger.warning('COHERE_API_KEY not configured')
+            return jsonify({'error': 'COHERE_API_KEY not configured. Please set it in the server .env'}), 400
+
+        model_id = os.getenv('COHERE_CHAT_MODEL', 'command')
+        cohere_payload = {
+            "model": model_id,
+            "message": user_message,
+        }
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json"
+        }
+        cohere_url = "https://api.cohere.ai/v1/chat"
+        response = requests.post(cohere_url, json=cohere_payload, headers=headers, timeout=30)
+        if response.status_code != 200:
+            logger.error(f"Cohere chat error: {response.status_code} {response.text}")
+            return jsonify({'error': 'Cohere API error', 'details': response.text}), 502
+
+        assistant_text = response.json().get('text', '')
+        return jsonify({'response': assistant_text})
+
+    except Exception as e:
+        logger.error(f"Error in chat endpoint: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 # Remove any existing after_request handlers
