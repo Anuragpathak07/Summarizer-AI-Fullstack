@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Card } from './ui/card';
-import { FileText, Clock } from 'lucide-react';
+import { FileText, Clock, Trash2 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 
 interface RecentUpload {
@@ -87,6 +87,28 @@ export const RecentUploads: React.FC<RecentUploadsProps> = ({ onSelect }) => {
     }
   };
 
+  const handleDelete = (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    try {
+      const storedUploads = localStorage.getItem('recentUploads');
+      if (storedUploads) {
+        const parsedUploads: RecentUpload[] = JSON.parse(storedUploads);
+        const updatedUploads = parsedUploads.filter(upload => upload.id !== id);
+        localStorage.setItem('recentUploads', JSON.stringify(updatedUploads));
+        setRecentUploads(updatedUploads);
+        
+        // Dispatch storage event to notify other components/tabs
+        window.dispatchEvent(new StorageEvent('storage', {
+          key: 'recentUploads',
+          newValue: JSON.stringify(updatedUploads),
+          storageArea: localStorage
+        }));
+      }
+    } catch (error) {
+      console.error('Error deleting recent upload:', error);
+    }
+  };
+
   useEffect(() => {
     loadRecentUploads();
 
@@ -136,17 +158,19 @@ export const RecentUploads: React.FC<RecentUploadsProps> = ({ onSelect }) => {
         {recentUploads.map((upload) => (
           <Card
             key={upload.id}
-            className="p-4 hover:shadow-lg transition-shadow cursor-pointer"
-            onClick={() => {
-              console.log('Selected upload:', upload);
-              onSelect({
-                flashcards: upload.flashcards,
-                learningContent: upload.learningContent,
-                quizQuestions: upload.quizQuestions,
-              });
-            }}
+            className="p-4 hover:shadow-lg transition-shadow relative"
           >
-            <div className="flex items-start space-x-3">
+            <div 
+              className="flex items-start space-x-3 cursor-pointer"
+              onClick={() => {
+                console.log('Selected upload:', upload);
+                onSelect({
+                  flashcards: upload.flashcards,
+                  learningContent: upload.learningContent,
+                  quizQuestions: upload.quizQuestions,
+                });
+              }}
+            >
               <div className="p-2 bg-indigo-100 dark:bg-indigo-900 rounded-lg">
                 <FileText className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
               </div>
@@ -167,6 +191,13 @@ export const RecentUploads: React.FC<RecentUploadsProps> = ({ onSelect }) => {
                 </div>
               </div>
             </div>
+            <button
+              onClick={(e) => handleDelete(e, upload.id)}
+              className="absolute top-2 right-2 p-1 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700"
+              aria-label="Delete upload"
+            >
+              <Trash2 className="w-4 h-4 text-gray-500 dark:text-gray-400" />
+            </button>
           </Card>
         ))}
       </div>
