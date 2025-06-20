@@ -64,7 +64,14 @@ export const PDFUploader: React.FC<PDFUploaderProps> = ({ onUploadComplete }) =>
       baseProgress + (chunkProgress * progressIncrement)
     );
 
-    const response = await fetch(`http://192.168.31.10:5000/api/${type === 'flashcards' ? 'flashcards/generate' : type === 'learning' ? 'learning/enhanced' : 'quiz/generate'}`, {
+    const response = await fetch(`${process.env.REACT_APP_API_URL}/api/${
+      type === 'flashcards'
+        ? 'flashcards/generate'
+        : type === 'learning'
+        ? 'learning/enhanced'
+        : 'quiz/generate'
+    }`,
+    {
       method: 'POST',
       body: formData,
       headers: {
@@ -84,7 +91,7 @@ export const PDFUploader: React.FC<PDFUploaderProps> = ({ onUploadComplete }) =>
   const processSmallFile = async (formData: FormData) => {
     // Generate flashcards
     updateProgress('generating_flashcards', 33);
-    const flashcardResponse = await fetch('http://192.168.31.10:5000/api/flashcards/generate', {
+    const flashcardResponse = await fetch(`${process.env.REACT_APP_API_URL}/api/flashcards/generate`,  {
       method: 'POST',
       body: formData,
     });
@@ -104,7 +111,7 @@ export const PDFUploader: React.FC<PDFUploaderProps> = ({ onUploadComplete }) =>
 
     // Generate learning content
     updateProgress('generating_learning', 66);
-    const learningResponse = await fetch('http://192.168.31.10:5000/api/learning/enhanced', {
+    const learningResponse = await fetch(`${process.env.REACT_APP_API_URL}/api/learning/enhanced`,{
       method: 'POST',
       body: formData,
     });
@@ -126,7 +133,7 @@ export const PDFUploader: React.FC<PDFUploaderProps> = ({ onUploadComplete }) =>
 
     // Generate quiz questions
     updateProgress('generating_quiz', 90);
-    const quizResponse = await fetch('http://192.168.31.10:5000/api/quiz/generate', {
+    const quizResponse = await fetch(`${process.env.REACT_APP_API_URL}/api/quiz/generate`, {
       method: 'POST',
       body: formData,
       headers: {

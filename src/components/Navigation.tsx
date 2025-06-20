@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { motion } from 'framer-motion';
 import { Upload, FileText, BookOpen, Target, Download, Moon, Sun, Brain } from 'lucide-react';
@@ -39,7 +38,7 @@ export const Navigation: React.FC<NavigationProps> = ({ activeTab, onTabChange }
               <Brain className="w-5 h-5 text-white" />
             </div>
             <span className="text-xl font-bold text-gray-900 dark:text-gray-100 font-poppins">
-              StudyMind
+              CogniPrep
             </span>
           </motion.div>
 
